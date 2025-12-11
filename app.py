@@ -140,7 +140,7 @@ def main():
                                     'Taxonomy Code': 'Not Found'
                                 })
 
-                            time.sleep(0.05)
+                            time.sleep(0.1)
 
                         result_df = pd.DataFrame(output_rows)
 
