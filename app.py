@@ -24,7 +24,6 @@ def get_taxonomy_data(npi_number):
             if data.get('result_count', 0) > 0 and 'results' in data:
                 return data['results'][0].get('taxonomies', [])
     except Exception as e:
-        # In a real app, you might want to log this error
         pass
 
     return []
@@ -45,6 +44,33 @@ def convert_df_to_excel(df):
 # --- Main Streamlit App ---
 def main():
     st.set_page_config(page_title="NPI Taxonomy Lookup", layout="centered")
+
+    # --- CUSTOM CSS FOR FILE UPLOADER ---
+    # This block targets the Streamlit file uploader to make it bigger and change color on hover
+    st.markdown("""
+        <style>
+        /* Target the drop zone container */
+        [data-testid='stFileUploader'] section {
+            padding: 3rem; /* Makes the drop zone much taller/bigger */
+            background-color: #f0f2f6; /* Light gray background by default */
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        /* Change color when hovering (simulates drag-over effect) */
+        [data-testid='stFileUploader'] section:hover {
+            background-color: #e3f2fd; /* Light blue background */
+            border-color: #2196f3;     /* Blue border */
+        }
+
+        /* Optional: Increase the font size of the text inside */
+        [data-testid='stFileUploader'] section > div {
+             font-size: 1.2rem;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # -------------------------------------
 
     st.title("🏥 NPI Taxonomy Lookup Tool")
     st.markdown("""
