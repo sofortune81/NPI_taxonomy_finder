@@ -46,116 +46,117 @@ def main():
     st.set_page_config(page_title="NPI Taxonomy Lookup", layout="centered")
 
     # --- CUSTOM CSS FOR FILE UPLOADER ---
-    # This block targets the Streamlit file uploader to make it bigger and change color on hover
     st.markdown("""
         <style>
-        /* Target the drop zone container */
         [data-testid='stFileUploader'] section {
-            padding: 3rem; /* Makes the drop zone much taller/bigger */
-            background-color: #f0f2f6; /* Light gray background by default */
-            border: 2px dashed #ccc;
-            border-radius: 10px;
+            padding: 80px 20px;
+            background-color: #f8f9fa;
+            border: 3px dashed #4CAF50;
+            border-radius: 20px;
             text-align: center;
+            transition: all 0.2s ease-in-out;
         }
 
-        /* Change color when hovering (simulates drag-over effect) */
-        [data-testid='stFileUploader'] section:hover {
-            background-color: #e3f2fd; /* Light blue background */
-            border-color: #2196f3;     /* Blue border */
+        [data-testid='stFileUploader'] section:hover,
+        [data-testid='stFileUploader'] section:focus-within {
+            background-color: #e8f5e9;
+            border-color: #2E7D32;
+            transform: scale(1.01);
         }
 
-        /* Optional: Increase the font size of the text inside */
         [data-testid='stFileUploader'] section > div {
-             font-size: 1.2rem;
+             font-size: 1.5rem;
+             font-weight: bold;
+             color: #333;
         }
         </style>
     """, unsafe_allow_html=True)
-    # -------------------------------------
 
     st.title("🏥 NPI Taxonomy Lookup Tool")
     st.markdown("""
-    Upload your Excel file to find taxonomy codes for NPI numbers.
-
     **Instructions:**
-    1. Ensure your NPIs are in **Column A** of the last tab (or a tab named "Missing NPIs (kelvin)").
-    2. Upload the file below.
-    3. Download the processed file with Taxonomy codes.
+    1. Drag your file into the green box below.
+    2. Select the **Sheet Name** containing your data.
+    3. Ensure there is a column header named **"NPI"**.
     """)
 
-    uploaded_file = st.file_uploader("Drag and drop Excel file here", type=['xlsx', 'xls'])
+    uploaded_file = st.file_uploader("Drop Excel File Here", type=['xlsx', 'xls'])
 
     if uploaded_file is not None:
         try:
-            # Try to load the specific sheet first, fallback to the last sheet
-            try:
-                df = pd.read_excel(uploaded_file, sheet_name='Missing NPIs (kelvin)', dtype=str)
-                st.info("Loaded sheet: 'Missing NPIs (kelvin)'")
-            except ValueError:
-                df = pd.read_excel(uploaded_file, sheet_name=-1, dtype=str)
-                st.info("Target sheet not found. Loaded the last sheet in the file.")
+            # 1. Load the Excel File wrapper (does not read data yet, just metadata)
+            xls = pd.ExcelFile(uploaded_file)
 
-            # Get NPIs from Column A (index 0)
-            # Remove NaNs and duplicates
-            npi_list = df.iloc[:, 0].dropna().unique()
+            # 2. Let user pick the sheet
+            sheet_names = xls.sheet_names
+            selected_sheet = st.selectbox("Select the sheet containing NPIs:", sheet_names)
 
-            st.write(f"**Found {len(npi_list)} unique NPIs to process.**")
+            if selected_sheet:
+                # Load the specific sheet
+                df = pd.read_excel(uploaded_file, sheet_name=selected_sheet, dtype=str)
 
-            if st.button("Start Processing"):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+                # Clean column names (remove spaces around headers)
+                df.columns = df.columns.str.strip()
 
-                output_rows = []
-                total_npis = len(npi_list)
+                # 3. Look for "NPI" column header
+                if 'NPI' in df.columns:
+                    # Extract NPIs from that specific column
+                    npi_list = df['NPI'].dropna().unique()
+                    st.success(f"Found column 'NPI' with {len(npi_list)} unique records.")
 
-                for i, npi in enumerate(npi_list):
-                    # Clean NPI string
-                    npi = str(npi).strip().replace('.0', '')  # Handle if excel read as float
+                    if st.button("Start Processing"):
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
 
-                    # Update status
-                    status_text.text(f"Processing {i + 1}/{total_npis}: {npi}")
-                    progress_bar.progress((i + 1) / total_npis)
+                        output_rows = []
+                        total_npis = len(npi_list)
 
-                    if len(npi) != 10 or not npi.isdigit():
-                        output_rows.append({'NPI': npi, 'Taxonomy Code': 'Invalid Format'})
-                        continue
+                        for i, npi in enumerate(npi_list):
+                            # Clean NPI string
+                            npi = str(npi).strip().replace('.0', '')
 
-                    # Fetch data
-                    taxonomies = get_taxonomy_data(npi)
+                            status_text.text(f"Processing {i + 1}/{total_npis}: {npi}")
+                            progress_bar.progress((i + 1) / total_npis)
 
-                    if taxonomies:
-                        for tax in taxonomies:
-                            output_rows.append({
-                                'NPI': npi,
-                                'Taxonomy Code': tax.get('code', ''),
-                                'Taxonomy Description': tax.get('desc', ''),
-                                'Primary Taxonomy': tax.get('primary', ''),
-                                'State': tax.get('state', ''),
-                                'License': tax.get('license', '')
-                            })
-                    else:
-                        output_rows.append({
-                            'NPI': npi,
-                            'Taxonomy Code': 'Not Found'
-                        })
+                            if len(npi) != 10 or not npi.isdigit():
+                                output_rows.append({'NPI': npi, 'Taxonomy Code': 'Invalid Format'})
+                                continue
 
-                    # Rate limiting (10 requests per second is the limit usually, stay safe with small sleep)
-                    time.sleep(0.05)
+                            taxonomies = get_taxonomy_data(npi)
 
-                # Finalize
-                result_df = pd.DataFrame(output_rows)
+                            if taxonomies:
+                                for tax in taxonomies:
+                                    output_rows.append({
+                                        'NPI': npi,
+                                        'Taxonomy Code': tax.get('code', ''),
+                                        'Taxonomy Description': tax.get('desc', ''),
+                                        'Primary Taxonomy': tax.get('primary', ''),
+                                        'State': tax.get('state', ''),
+                                        'License': tax.get('license', '')
+                                    })
+                            else:
+                                output_rows.append({
+                                    'NPI': npi,
+                                    'Taxonomy Code': 'Not Found'
+                                })
 
-                st.success("Processing Complete!")
-                st.dataframe(result_df.head())
+                            time.sleep(0.05)
 
-                # Create download button
-                excel_data = convert_df_to_excel(result_df)
+                        result_df = pd.DataFrame(output_rows)
 
-                st.download_button(
-                    label="📥 Download Results as Excel",
-                    data=excel_data,
-                    file_name="npi_taxonomy_results.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                        st.success("Processing Complete!")
+                        st.dataframe(result_df.head())
+
+                        excel_data = convert_df_to_excel(result_df)
+
+                        st.download_button(
+                            label="📥 Download Results",
+                            data=excel_data,
+                            file_name="npi_taxonomy_results.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                else:
+                    st.error("❌ Could not find a column named 'NPI' in the selected sheet. Please check your headers.")
 
         except Exception as e:
             st.error(f"Error reading file: {e}")
